@@ -119,13 +119,17 @@ jobs:
       - name: Prepare plugin build tools
         shell: pwsh
         run: |
-          npm install --global corepack@0.34.6
-          corepack enable
+          $PSNativeCommandUseErrorActionPreference = $true
+          # Install isolated shims so the runner's preinstalled Yarn is untouched.
+          npm install --prefix .ci-tools/corepack --no-audit --no-fund corepack@0.34.6
+          $corepackBin = (Resolve-Path .ci-tools/corepack/node_modules/.bin).Path
+          $env:PATH = "$corepackBin;$env:PATH"
+          $corepackBin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          corepack enable pnpm --install-directory $corepackBin
+          corepack --version
+          corepack pnpm --version
           npm install --prefix .ci-tools/typescript --no-audit --no-fund typescript@5.9.3
           python -m venv .venv
-          Push-Location plugins/packages/buildin/workflow
-          corepack pnpm install --frozen-lockfile
-          Pop-Location
 
       - name: Install Java
         uses: actions/setup-java@v4
@@ -215,6 +219,13 @@ jobs:
       - name: Check build environment
         shell: pwsh
         run: python tools/build_scripts/check_build_environment.py --products app --github-runner
+
+      - name: Generate embedded plugin assets
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          # Proxy codegen compiles operit-runtime and requires these archives first.
+          .venv/Scripts/python.exe plugins/tools/sync_plugin_packages.py --source runtime --no-hot-reload
 
       - name: Build and package Android app
         shell: pwsh
